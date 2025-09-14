@@ -1,0 +1,10 @@
+core/__py*/
+strategies/__py*/
+factories/__py*/
+tests/__py*/
+config/__py*/
+
+
+.env
+# does not ignore the README.md file
+!README.md
