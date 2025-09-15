@@ -1,5 +1,5 @@
 from playwright.async_api import Page
-from base import InteractionStrategy
+from .base import InteractionStrategy
 
 
 class ReplyStrategy(InteractionStrategy):
