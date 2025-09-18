@@ -1,7 +1,7 @@
 from strategies.base import InteractionStrategy
 from strategies.profile_scrape import ScrapeStrategy
 from strategies.post_reply import ReplyStrategy
-from strategies.post_like import LikeStrategy
+from strategies.insta_act import InstaStrategy
 
 
 def get_strategy(name: str) -> InteractionStrategy:
@@ -11,7 +11,7 @@ def get_strategy(name: str) -> InteractionStrategy:
     mapping = {
         "profile_scrape": ScrapeStrategy,
         "post_reply": ReplyStrategy,
-        "post_like": LikeStrategy,
+        "insta_act": InstaStrategy,
     }
     StrategyClass = mapping.get(name)
     if not StrategyClass:

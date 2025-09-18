@@ -1,11 +1,13 @@
 from playwright.async_api import Page
 from .base import InteractionStrategy
+from utils.credentials import load_credentials
 
 
-class LikeStrategy(InteractionStrategy):
+class InstaStrategy(InteractionStrategy):
     """
-    likes posts or reels
+    Perform user actions on instagram
     """
 
     async def interact(self, page: Page):
         pass
+

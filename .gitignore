@@ -4,7 +4,7 @@ strategies/__py*/
 factories/__py*/
 tests/__py*/
 config/__py*/
-
+config/user_credentials.json
 
 .env
 # does not ignore the README.md file
