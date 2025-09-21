@@ -5,7 +5,7 @@ from factories.strategy_factory import get_strategy
 
 async def main():
     # 1. Create an actor using the scrape strategy
-    scrape_strategy = get_strategy("profile_scrape")
+    scrape_strategy = get_strategy("insta_act")
     actor = Actor(scrape_strategy, headless=False)
 
     # 2. Run the scrape and capture results
