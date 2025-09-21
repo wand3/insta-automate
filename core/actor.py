@@ -14,13 +14,15 @@ class Actor:
                  strategy: InteractionStrategy,
                  storage_state_path: str = None,
                  headless: bool = True):
-        storage_dir = ensure_parent_folder(".storage_state")
-        storage_path = storage_dir / f"{strategy.__class__.__name__}.json"
-        self.storage_state_path = str(storage_path)
+        # storage_dir = ensure_parent_folder(".storage_state")
+        # storage_path = storage_dir / f"{strategy.__class__.__name__}.json"
+        # self.storage_state_path = str(storage_path)
         self.strategy = strategy
+
+        state_file = f"{strategy.__class__.__name__}.json"
         self.browser_manager = BrowserManager(
             headless=headless,
-            storage_state_path=storage_state_path
+            storage_state_path=state_file
         )
         self.logger = get_logger(self.__class__.__name__)
 
