@@ -8,5 +8,16 @@ browser = p.firefox.launch(headless=False) # Or p.firefox.launch(headless=False)
 page = browser.new_page()
 
 # check if login on screen
-login = page.wait_for_selector("button[type='submit']:has-text('Log in')")
+page.fill("input[name='username']", username)
+page.fill("input[name='password']", password)
 login = page.query_selector("button[type='submit']:has-text('Log in')")
+login.click()
+posts = page.query_selector_all('article')
+from bs4 import BeautifulSoup
+# html_code = page.content()
+html = posts[0].inner_html()
+soup = BeautifulSoup(html, 'html.parser')
+post_user = soup.select_one('a',{'role': 'link'})
+post_user.get('href')
+
+text_span = soup.select_one("div[style='display:inline'] span, article span")

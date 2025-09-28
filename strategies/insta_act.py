@@ -1,12 +1,14 @@
 import time
 import random
-from playwright.async_api import Page
+from playwright.async_api import Page, ElementHandle
 from .base import InteractionStrategy
 from utils.credentials import load_credentials
 from utils.logger import get_logger
 from utils.cookie_utils import save_cookies
+from utils.soup import get_posts
 from pathlib import Path
 import asyncio
+from typing import List, Any, Coroutine
 
 short_delay = random.uniform(1, 4)
 
@@ -63,6 +65,41 @@ class InstaStrategy(InteractionStrategy):
         except Exception as e:
             self.logger.info(f"Login page error {e}")
             raise e
+
+    async def get_post_details(self, page: Page):
+        post_link = ''
+        post_user = "'a',{'role': 'link'}" #get_text() returns the username
+        post_text = "'span', {'dir': 'auto'}"
+        post_likes = 'section:nth-of-type(2)'
+        post_comments = None
+
+        # post link ------------------
+        post_object = await soup.find_all('img')
+        try:
+            if post_object:
+                post_link = f'https://instagram.com/reels/{post_object[0]}'
+        except Exception as e:
+            post_object = await soup.find_all('video')
+            post_link = f'https://instagram.com/reels/{post_object[1]}'
+
+
+        # post comment count ------------------
+        # 1) Find the outer anchor by href pattern (robust) and then the inner number span
+        a = soup.find("a", href=re.compile(r"/comments/?"))
+        num_span = a.find("span", string=re.compile(r"\d")) if a else None
+        raw_text = num_span.get_text(strip=True) if num_span else None
+
+        # 2) Normalize: strip non-digit characters and convert to int
+        if raw_text:
+            digits = re.sub(r"[^\d]", "", raw_text)  # "2,711" -> "2711"
+            comments_count = int(digits) if digits else 0
+        else:
+            comments_count = 0
+        post_comments = comments_count
+
+    async def get_posts(self, page: Page) -> list[ElementHandle]:
+        posts = await page.query_selector_all('article')
+        return posts
 
     async def interact(self, page: Page):
         await page.goto("https://instagram.com/")
