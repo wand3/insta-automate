@@ -21,3 +21,5 @@ post_user = soup.select_one('a',{'role': 'link'})
 post_user.get('href')
 
 text_span = soup.select_one("div[style='display:inline'] span, article span")
+spans = soup.find_all("span", class_="_ap3a")
+print(spans[2].text)
