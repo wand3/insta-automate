@@ -8,7 +8,7 @@ from .base import InteractionStrategy
 from utils.credentials import load_credentials
 from utils.logger import get_logger
 from utils.cookie_utils import save_cookies
-from utils.fs_utils import ensure_parent_folder, save_to_json
+from utils.fs_utils import ensure_parent_folder, save_to_json, extract_post_users_from_json
 from pathlib import Path
 import asyncio
 from typing import List, Any, Coroutine
@@ -206,9 +206,17 @@ class InstaStrategy(InteractionStrategy):
             }""")
             await asyncio.sleep(delay)
 
-    async def scrape_profiles(self, page: Page, post_json_path: str="post_details.json",
+    async def scrape_profiles(self, page: Page, post_json_path: str="posts_details.json",
                               out_json_path: str="profile_scrapes.json", max_retries: int = 2):
-        pass
+        users = extract_post_users_from_json(post_json_path, 'post_user')
+        self.logger.info(f'{users}')
+
+        for i in range(len(users)):
+            self.logger.info(f'{users[i]}')
+
+            await page.goto(users[i])
+
+            self.logger.info('profile page visit success')
 
     async def interact(self, page: Page):
         await page.goto("https://instagram.com/")
@@ -257,7 +265,8 @@ class InstaStrategy(InteractionStrategy):
         await page.wait_for_load_state()
         await asyncio.sleep(short_delay)
         await self.scroll_home(page)
-        await self.get_posts(page)
+        # await self.get_posts(page)
+        await self.scrape_profiles(page)
 
         self.logger.info("InstaStrategy finished actions")
         self.logger.info(f"la di la")
