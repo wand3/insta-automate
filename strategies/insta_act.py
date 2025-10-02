@@ -1,5 +1,8 @@
+import logging
 import time
 import random
+import re
+import json
 from playwright.async_api import Page, ElementHandle
 from .base import InteractionStrategy
 from utils.credentials import load_credentials
@@ -77,23 +80,23 @@ class InstaStrategy(InteractionStrategy):
         post_contents = []
 
         # post link ------------------
-        if_image = await soup.find_all('img')
+        if_image = soup.find_all('img')
         links = soup.find_all('a', {'role': 'link'})
         for i in range(len(links)):
             try:
-                if len(if_image) >= 1:
-                    link = links[1].get('href')
-                    post_link = f'https://www.instagram.com/{link}'
+                if if_image:
+                    link = links[0].get('href')
+                    post_link = f'https://www.instagram.com{link}'
             except Exception as e:
                 # post_object = await soup.find_all('video')
                 # post_link = f'https://instagram.com/{post_object[1]}'
-                link = links[1].get('href')
-                post_link = f'https://www.instagram.com/{link}'
+                link = links[0].get('href')
+                post_link = f'https://www.instagram.com{link}'
 
         # post user ------------------
         try:
-            user = await soup.select_one('a', {'role': 'link'})
-            post_user = user.get('href')
+            user = soup.find_all('a', {'role': 'link'})
+            post_user = user[0].get('href')
             username = str(post_user).strip('/')
             post_user = f'https://www.instagram.com/{username}'
         except Exception as e:
@@ -130,8 +133,8 @@ class InstaStrategy(InteractionStrategy):
             self.logger.error(f"Couldn't get comments count {e}")
 
         # post content links ------------------
-        post_images = await soup.find_all('img')
-        post_videos = await soup.find_all('video')
+        post_images = soup.find_all('img')
+        post_videos = soup.find_all('video')
         try:
             if post_images:
                 for link in post_images:
@@ -166,21 +169,54 @@ class InstaStrategy(InteractionStrategy):
         except Exception as e:
             self.logger.error(f"Couldn't save results {e}")
 
-    async def get_posts(self, page: Page) -> list[ElementHandle]:
+    async def get_posts(self, page: Page, max_concurrent: int = 5) -> list[ElementHandle]:
         posts = await page.query_selector_all('article')
-        for i in range(len(posts)):
-            html_code = await posts[i].inner_html()
-            soup = await BeautifulSoup(html_code, 'html.parser')
-            await get_post_details(soup)
 
-        return all_posts
+        # Limit concurrency to avoid overwhelming the browser
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        async def process_post(post: ElementHandle):
+            async with semaphore:
+                html_code = await post.inner_html()
+                soup = BeautifulSoup(html_code, 'html.parser')
+                return await self.get_post_details(soup)
+
+        # Process all posts with controlled concurrency
+        tasks = [process_post(post) for post in posts]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Error handling
+        successful = 0
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                self.logger.error(f"Failed to process post {i}: {result}")
+            else:
+                successful += 1
+
+        self.logger.info(f"Successfully processed {successful}/{len(posts)} posts")
+        return posts
+
+    async def scroll_home(self, page: Page, scrolls: int = 4, delay: float = 2.0):
+        """
+        Scrolls the Instagram home page downward multiple times.
+
+        Args:
+            page: Playwright Page object
+            scrolls: number of scroll actions to perform
+            delay: seconds to wait between scrolls
+        """
+        for i in range(scrolls):
+            await page.evaluate("""() => {
+                window.scrollBy(0, window.innerHeight);
+            }""")
+            await asyncio.sleep(delay)
 
     async def interact(self, page: Page):
         await page.goto("https://instagram.com/")
         # 1) If no cookie file, log in fresh and save cookies
         # verify
         value = page.evaluate("() => navigator.webdriver")
-        self.logger.error("navigator.webdriver =", value)
+        self.logger.error("navigator.webdriver =''", value)
 
         # login = await page.query_selector("button[type='submit']:has-text('Log in')")
         home = await page.query_selector("div[data-visualcompletion='ignore-dynamic']")
@@ -221,6 +257,7 @@ class InstaStrategy(InteractionStrategy):
 
         await page.wait_for_load_state()
         await asyncio.sleep(short_delay)
+        await self.scroll_home(page)
         await self.get_posts(page)
 
         self.logger.info("InstaStrategy finished actions")
