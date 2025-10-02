@@ -8,7 +8,7 @@ from .base import InteractionStrategy
 from utils.credentials import load_credentials
 from utils.logger import get_logger
 from utils.cookie_utils import save_cookies
-from utils.fs_utils import ensure_parent_folder
+from utils.fs_utils import ensure_parent_folder, save_to_json
 from pathlib import Path
 import asyncio
 from typing import List, Any, Coroutine
@@ -85,12 +85,12 @@ class InstaStrategy(InteractionStrategy):
         for i in range(len(links)):
             try:
                 if if_image:
-                    link = links[0].get('href')
+                    link = links[2].get('href')
                     post_link = f'https://www.instagram.com{link}'
             except Exception as e:
                 # post_object = await soup.find_all('video')
                 # post_link = f'https://instagram.com/{post_object[1]}'
-                link = links[0].get('href')
+                link = links[2].get('href')
                 post_link = f'https://www.instagram.com{link}'
 
         # post user ------------------
@@ -153,19 +153,14 @@ class InstaStrategy(InteractionStrategy):
             "post_text": post_text,
             "post_likes": post_likes,
             "post_comments": post_comments,
-            "post_contents": post_contents
+            "post_contents": post_contents,
         }
         self.logger.info(f"{post}")
-
+        # post_exist = existing.append(post)
         try:
             self.logger.info(f"saving to json post data")
-            storage_dir = ensure_parent_folder("results")
-            filename = "posts_details.json"
-            file_path = storage_dir / filename
+            save_to_json(self, post)
 
-            # Save to JSON
-            with open(file_path, 'w') as f:
-                json.dump(post, f, indent=2)
         except Exception as e:
             self.logger.error(f"Couldn't save results {e}")
 
@@ -210,6 +205,10 @@ class InstaStrategy(InteractionStrategy):
                 window.scrollBy(0, window.innerHeight);
             }""")
             await asyncio.sleep(delay)
+
+    async def scrape_profiles(self, page: Page, post_json_path: str="post_details.json",
+                              out_json_path: str="profile_scrapes.json", max_retries: int = 2):
+        pass
 
     async def interact(self, page: Page):
         await page.goto("https://instagram.com/")
