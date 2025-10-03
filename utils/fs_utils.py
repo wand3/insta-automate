@@ -151,6 +151,50 @@ def extract_post_users_from_json(filename, dict_key):
 
     return unique_users
 
-# # Usage
-# users = extract_post_users_from_broken_json('results.json')
-# print(f"Found {len(users)} users: {users}")
+
+# save scraped user profile
+def save_to_profile_json(self, profile, filename=None):
+    """Save extracted data to JSON file"""
+    if not filename:
+        try:
+            self.logger.info(f"saving to json profile data")
+            storage_dir = ensure_parent_folder("results")
+            filename = "profiles.json"
+            file_path = storage_dir / filename
+
+            # # Save to JSON
+            with open(file_path, "w", encoding="utf-8") as f:
+                json.dump(profile, f, ensure_ascii=False, indent=2)
+            return
+        except Exception as e:
+            self.logger.error(f"Couldn't save results {e}")
+
+    # file_path = storage_dir / filename
+    base_folder = Path(__name__).resolve().parent
+    results_dir = base_folder / "results"
+    results_dir.mkdir(parents=True, exist_ok=True)
+    # Now, define the full path to the file itself
+    filepath = results_dir / filename
+    # Load existing data (if file exists), else start fresh
+    if filepath.exists():
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                existing = json.load(f)
+                if not isinstance(existing, list):
+                    # handle corrupted/non-list file
+                    existing = []
+        except json.JSONDecodeError:
+            existing = []
+    else:
+        existing = []
+
+    # Append new record
+    existing.append(profile)
+
+    # Write back entire list, nicely formatted
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(existing, f, ensure_ascii=False, indent=2)
+    # with open(filepath, 'a', encoding='utf-8') as f:
+    #     json.dump(self.data, f, indent=2, ensure_ascii=False)
+    return str(filepath)
+

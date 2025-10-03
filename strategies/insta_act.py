@@ -8,7 +8,8 @@ from .base import InteractionStrategy
 from utils.credentials import load_credentials
 from utils.logger import get_logger
 from utils.cookie_utils import save_cookies
-from utils.fs_utils import ensure_parent_folder, save_to_json, extract_post_users_from_json
+from utils.fs_utils import ensure_parent_folder, save_to_json, extract_post_users_from_json, save_to_profile_json
+from utils.insta_utils import check_if_click_successful
 from pathlib import Path
 import asyncio
 from typing import List, Any, Coroutine
@@ -206,17 +207,105 @@ class InstaStrategy(InteractionStrategy):
             }""")
             await asyncio.sleep(delay)
 
-    async def scrape_profiles(self, page: Page, post_json_path: str="posts_details.json",
-                              out_json_path: str="profile_scrapes.json", max_retries: int = 2):
-        users = extract_post_users_from_json(post_json_path, 'post_user')
-        self.logger.info(f'{users}')
+    async def _scrape_one(self, profile_url, max_retries=5):
+        # semaphore-controlled concurrency
+        semaphore = asyncio.Semaphore(max_retries)
+        seen_profiles = set()
 
-        for i in range(len(users)):
-            self.logger.info(f'{users[i]}')
+        # dedupe
+        if profile_url in seen_profiles:
+            self.logger.debug("Already processed %s", profile_url)
+            return
+        seen_profiles.add(profile_url)
 
-            await page.goto(users[i])
+        attempt = 0
+        backoff = 1
+        while attempt <= max_retries:
+            attempt += 1
+            try:
+                async with semaphore:
+                    self.logger.info("Visiting profile (attempt %d) %s", attempt, profile_url)
+                    profile_page = await self.page
+                    try:
 
-            self.logger.info('profile page visit success')
+                        # polite navigational options: timeout, wait strategy
+                        await self.page.goto(profile_url)
+                        # wait for a stable point; adjust selector to your site
+                        try:
+                            verified = await check_if_click_successful(
+                                self.page,
+                                selector=candidate,
+                                url_pattern=profile_url,
+                                logger=self.logger
+                            )
+                            self.logger.info(f'Verified page visit status --- {verified}')
+                        except Exception as e:
+                            self.logger.debug(f"Failed to visit profile timed out for %s (attempt %d) {e}", profile_url, attempt)
+
+                        # random small delay to allow dynamic content
+                        delay = random.uniform(min_delay, max_delay)
+                        self.logger.debug("Sleeping %.2fs on %s to allow content load", delay, profile_url)
+                        await asyncio.sleep(delay)
+
+                        html = await self.page.content()  # await Playwright
+                        parsed = _parse_profile_html(html, profile_url)
+
+                        # self.logger.info("Scraped %s: username=%s images=%d", profile_url, parsed.get("username"),
+                        #          len(parsed.get("recent_media", [])))
+
+                        # save scraped profile items
+                        profile = {
+                            "posts": "",
+                            "followers": "",
+                            "following": "",
+                            "website": "",
+                            "profile_category": "",
+                            "about": "No transactions found",
+                            "user": source_url,
+                        }
+                        self.logger.info(f"{profile}")
+                        # post_exist = existing.append(post)
+                        try:
+                            self.logger.info(f"saving to json post data")
+                            save_to_profile_json(self, profile)
+
+                        except Exception as e:
+                            self.logger.error(f"Couldn't save results {e}")
+
+                        await self.page.close()
+                        # polite post-scrape delay
+                        await asyncio.sleep(random.uniform(min_delay, max_delay))
+                        return
+                    finally:
+                        try:
+                            await self.page.close()
+                        except Exception:
+                            pass
+            except Exception as exc:
+                self.logger.exception("Error scraping %s on attempt %d: %s", profile_url, attempt, exc)
+                # exponential backoff but bounded
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 30)
+                if attempt > max_retries:
+                    failure_record = {"_profile_url": profile_url, "_source_post": post_id, "error": str(exc),
+                                      "_attempts": attempt}
+                    self.logger.error("Failed to scrape %s after %d attempts", profile_url, attempt, failure_record)
+                    return
+
+    async def scrape_profiles(self, profile_json_path: str = "posts_details.json",
+                              out_json_path: str = "profile_scrapes.json", max_retries: int = 2):
+        users = extract_post_users_from_json(profile_json_path, 'post_user')
+        # schedule tasks with bounded concurrency
+        tasks = [asyncio.create_task(self._scrape_one(user)) for user in users]
+        # wait for completion, propagate errors only after logging
+        await asyncio.gather(*tasks)
+        log.info("Profile scraping run complete; output appended to %s", out_path)
+
+        # self.logger.info('profile page visit success')
+        # for i in range(len(users)):
+        #     self.logger.info(f'{users[i]}')
+        #
+        #     await page.goto(users[i])
 
     async def interact(self, page: Page):
         await page.goto("https://instagram.com/")
@@ -266,7 +355,7 @@ class InstaStrategy(InteractionStrategy):
         await asyncio.sleep(short_delay)
         await self.scroll_home(page)
         # await self.get_posts(page)
-        await self.scrape_profiles(page)
+        await self.scrape_profiles()
 
         self.logger.info("InstaStrategy finished actions")
         self.logger.info(f"la di la")

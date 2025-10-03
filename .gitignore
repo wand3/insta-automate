@@ -6,7 +6,7 @@ tests/__py*/
 config/__py*/
 # Ignore the user credentials file
 /config/user_credentials.json
-.storage_state/*.json
+.storage_state/*
 .env
 # does not ignore the README.md file
 !README.md

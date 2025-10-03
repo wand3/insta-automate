@@ -4,6 +4,7 @@ import os
 from utils.logger import get_logger
 import json
 
+
 class BrowserManager:
     # def __init__(self, headless: bool = False, storage_state_path: str = None):
     def __init__(self, headless: bool = False, state_filename=None, storage_state_path=None):
