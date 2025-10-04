@@ -140,3 +140,34 @@ async def check_if_its_visible(page, selector, logger):
     logger.warning(f"All visibility checks failed for: {selector}")
     return False
 
+
+def parse_count(text: str):
+    """Convert strings like '411K', '2,876', '1.2M' to int where possible."""
+    if not text:
+        return None
+    s = text.strip()
+    # remove non-breaking spaces
+    s = s.replace('\xa0', '').replace('\u202f', '')
+    # direct digits with commas
+    if re.match(r'^[\d,\.]+$', s):
+        try:
+            # handle decimals by removing fractional part for counts
+            return int(float(s.replace(',', '')))
+        except Exception:
+            return None
+    m = re.match(r'^([\d,.]*\d)([kKmM])$', s)
+    if m:
+        num = float(m.group(1).replace(',', ''))
+        suffix = m.group(2).lower()
+        if suffix == 'k':
+            return int(num * 1000)
+        if suffix == 'm':
+            return int(num * 1000000)
+    # fallback: find first number-like token
+    m2 = re.search(r'([\d,\.]+)', s)
+    if m2:
+        try:
+            return int(float(m2.group(1).replace(',', '')))
+        except Exception:
+            return None
+    return None

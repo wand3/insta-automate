@@ -163,9 +163,9 @@ def save_to_profile_json(self, profile, filename=None):
             file_path = storage_dir / filename
 
             # # Save to JSON
-            with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(profile, f, ensure_ascii=False, indent=2)
-            return
+            # with open(file_path, "w", encoding="utf-8") as f:
+            #     json.dump(profile, f, ensure_ascii=False, indent=2)
+            # return
         except Exception as e:
             self.logger.error(f"Couldn't save results {e}")
 

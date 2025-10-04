@@ -6,7 +6,7 @@ from playwright.sync_api import sync_playwright
 p = sync_playwright().start()
 browser = p.firefox.launch(headless=False) # Or p.firefox.launch(headless=False), etc.
 page = browser.new_page()
-
+page.goto('https://www.instagram.com')
 # check if login on screen
 page.fill("input[name='username']", username)
 page.fill("input[name='password']", password)
@@ -23,6 +23,7 @@ post_user.get('href')
 text_span = soup.select_one("div[style='display:inline'] span, article span")
 spans = soup.find_all("span", class_="_ap3a")
 print(spans[2].text)
+header = page.query_selector_all('header')
 
 
 

@@ -9,7 +9,7 @@ from utils.credentials import load_credentials
 from utils.logger import get_logger
 from utils.cookie_utils import save_cookies
 from utils.fs_utils import ensure_parent_folder, save_to_json, extract_post_users_from_json, save_to_profile_json
-from utils.insta_utils import check_if_click_successful
+from utils.insta_utils import check_if_click_successful, parse_count
 from pathlib import Path
 import asyncio
 from typing import List, Any, Coroutine
@@ -192,7 +192,7 @@ class InstaStrategy(InteractionStrategy):
         self.logger.info(f"Successfully processed {successful}/{len(posts)} posts")
         return posts
 
-    async def scroll_home(self, page: Page, scrolls: int = 4, delay: float = 2.0):
+    async def scroll_home(self, page: Page, scrolls: int = 2, delay: float = 2.0):
         """
         Scrolls the Instagram home page downward multiple times.
 
@@ -207,7 +207,7 @@ class InstaStrategy(InteractionStrategy):
             }""")
             await asyncio.sleep(delay)
 
-    async def _scrape_one(self, profile_url, max_retries=5):
+    async def _scrape_one(self, page, profile_url, max_retries=2):
         # semaphore-controlled concurrency
         semaphore = asyncio.Semaphore(max_retries)
         seen_profiles = set()
@@ -225,15 +225,19 @@ class InstaStrategy(InteractionStrategy):
             try:
                 async with semaphore:
                     self.logger.info("Visiting profile (attempt %d) %s", attempt, profile_url)
-                    profile_page = await self.page
+                    # profile_page = await page.n
+                    context = page.context
+                    new_page = await context.new_page()
                     try:
 
                         # polite navigational options: timeout, wait strategy
-                        await self.page.goto(profile_url)
+                        await new_page.goto(profile_url)
+                        await asyncio.sleep(short_delay)
                         # wait for a stable point; adjust selector to your site
                         try:
+                            # await new_page.wait_for_url(profile_url)
                             verified = await check_if_click_successful(
-                                self.page,
+                                new_page,
                                 selector=candidate,
                                 url_pattern=profile_url,
                                 logger=self.logger
@@ -243,12 +247,12 @@ class InstaStrategy(InteractionStrategy):
                             self.logger.debug(f"Failed to visit profile timed out for %s (attempt %d) {e}", profile_url, attempt)
 
                         # random small delay to allow dynamic content
-                        delay = random.uniform(min_delay, max_delay)
+                        delay = random.uniform(0, short_delay)
                         self.logger.debug("Sleeping %.2fs on %s to allow content load", delay, profile_url)
                         await asyncio.sleep(delay)
 
-                        html = await self.page.content()  # await Playwright
-                        parsed = _parse_profile_html(html, profile_url)
+                        # html = await new_page.content()  # await Playwright
+                        # parsed = _parse_profile_html(html, profile_url)
 
                         # self.logger.info("Scraped %s: username=%s images=%d", profile_url, parsed.get("username"),
                         #          len(parsed.get("recent_media", [])))
@@ -259,26 +263,86 @@ class InstaStrategy(InteractionStrategy):
                             "followers": "",
                             "following": "",
                             "website": "",
-                            "profile_category": "",
-                            "about": "No transactions found",
-                            "user": source_url,
+                            "about": "",
+                            "user": profile_url,
                         }
                         self.logger.info(f"{profile}")
                         # post_exist = existing.append(post)
                         try:
-                            self.logger.info(f"saving to json post data")
+                            header = await new_page.query_selector_all('header')
+                            html_code = await header[0].inner_html()
+                            soup = BeautifulSoup(html_code, 'html.parser')
+
+                            # get all sections
+                            sections = soup.find_all("section")
+                            html_code = sections[2]
+                            details_section = sections[3]
+                            lis = html_code.find_all('li')
+                            # try to map by position: 0=posts,1=followers,2=following
+                            if len(lis) >= 3:
+                                # posts
+                                try:
+                                    posts_text = lis[0].text
+
+                                    # get first numeric token
+                                    posts_num = re.search(r'[\d,.]+[kKmM]?', posts_text)
+                                    profile["posts"] = posts_num.group(0) if posts_num else None
+                                    self.logger.info(f"posts {profile['posts']}")
+
+                                except Exception as e:
+                                    self.logger.debug("Failed to parse posts: %s", e)
+
+                                # followers (often inside an <a> with title or inner span)
+                                try:
+                                    followers_text = lis[1].text
+                                    m = re.search(r'[\d,.]+[kKmM]?', followers_text)
+                                    followers_val = m.group(0)
+                                    profile["followers"] = parse_count(followers_val) if followers_val else None
+                                except Exception as e:
+                                    self.logger.debug("Failed to parse followers: %s", e)
+
+                                # following
+                                try:
+                                    following_text = lis[2].text
+                                    m = re.search(r'[\d,.]+[kKmM]?', following_text)
+                                    profile["following"] = parse_count(m.group(0)) if m else None
+                                except Exception as e:
+                                    self.logger.debug("Failed to parse following: %s", e)
+
+                            else:
+                                # more defensive scanning by tokens
+                                text_blob = " ".join(li.text for li in lis)
+                                posts_m = re.search(r'([\d,.]+[kKmM]?)\s*posts?', text_blob, flags=re.I)
+                                followers_m = re.search(r'([\d,.]+[kKmM]?)\s*followers?', text_blob, flags=re.I)
+                                following_m = re.search(r'([\d,.]+[kKmM]?)\s*following', text_blob, flags=re.I)
+                                if posts_m:
+                                    profile["posts"] = parse_count(posts_m.group(1))
+                                if followers_m:
+                                    profile["followers"] = parse_count(followers_m.group(1))
+                                if following_m:
+                                    profile["following"] = parse_count(following_m.group(1))
+
+                            divs = details_section.find_all('div')
+                            links = details_section.find_all('a')
+
+                            profile['about'] = divs[6].text if len(divs) <= 10 else None
+                            profile['website'] = links[2].text if len(links) >= 3 else None
+                            self.logger.info(f"{profile}")
+
+                            # self.logger.info(f"saving to json post data")
                             save_to_profile_json(self, profile)
+                            return profile
 
                         except Exception as e:
                             self.logger.error(f"Couldn't save results {e}")
 
-                        await self.page.close()
+                        await new_page.close()
                         # polite post-scrape delay
-                        await asyncio.sleep(random.uniform(min_delay, max_delay))
+                        await asyncio.sleep(random.uniform(0, short_delay))
                         return
                     finally:
                         try:
-                            await self.page.close()
+                            await new_page.close()
                         except Exception:
                             pass
             except Exception as exc:
@@ -287,25 +351,22 @@ class InstaStrategy(InteractionStrategy):
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 30)
                 if attempt > max_retries:
-                    failure_record = {"_profile_url": profile_url, "_source_post": post_id, "error": str(exc),
+                    failure_record = {"_profile_url": profile_url, "error": str(exc),
                                       "_attempts": attempt}
                     self.logger.error("Failed to scrape %s after %d attempts", profile_url, attempt, failure_record)
                     return
 
-    async def scrape_profiles(self, profile_json_path: str = "posts_details.json",
-                              out_json_path: str = "profile_scrapes.json", max_retries: int = 2):
+    async def scrape_profiles(self, page: Page, profile_json_path: str = "posts_details.json",
+                              ):
         users = extract_post_users_from_json(profile_json_path, 'post_user')
         # schedule tasks with bounded concurrency
-        tasks = [asyncio.create_task(self._scrape_one(user)) for user in users]
-        # wait for completion, propagate errors only after logging
-        await asyncio.gather(*tasks)
-        log.info("Profile scraping run complete; output appended to %s", out_path)
+        # tasks = [asyncio.create_task(self._scrape_one(page, user)) for user in users[:5]]
+        # # wait for completion, propagate errors only after logging
+        # await asyncio.gather(*tasks)
+        for user in users[:5]:
+            await self._scrape_one(page, user)
 
-        # self.logger.info('profile page visit success')
-        # for i in range(len(users)):
-        #     self.logger.info(f'{users[i]}')
-        #
-        #     await page.goto(users[i])
+        self.logger.info("Profile scraping run complete; output appended to %s")
 
     async def interact(self, page: Page):
         await page.goto("https://instagram.com/")
@@ -355,7 +416,7 @@ class InstaStrategy(InteractionStrategy):
         await asyncio.sleep(short_delay)
         await self.scroll_home(page)
         # await self.get_posts(page)
-        await self.scrape_profiles()
+        await self.scrape_profiles(page)
 
         self.logger.info("InstaStrategy finished actions")
         self.logger.info(f"la di la")
