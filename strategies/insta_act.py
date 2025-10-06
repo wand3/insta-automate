@@ -207,7 +207,7 @@ class InstaStrategy(InteractionStrategy):
             }""")
             await asyncio.sleep(delay)
 
-    async def _scrape_one(self, page, profile_url, max_retries=2):
+    async def _scrape_one(self, page, profile_url, max_retries=3):
         # semaphore-controlled concurrency
         semaphore = asyncio.Semaphore(max_retries)
         seen_profiles = set()
@@ -251,23 +251,16 @@ class InstaStrategy(InteractionStrategy):
                         self.logger.debug("Sleeping %.2fs on %s to allow content load", delay, profile_url)
                         await asyncio.sleep(delay)
 
-                        # html = await new_page.content()  # await Playwright
-                        # parsed = _parse_profile_html(html, profile_url)
-
-                        # self.logger.info("Scraped %s: username=%s images=%d", profile_url, parsed.get("username"),
-                        #          len(parsed.get("recent_media", [])))
-
                         # save scraped profile items
                         profile = {
                             "posts": "",
-                            "followers": "",
-                            "following": "",
+                            "followers": None,
+                            "following": None,
                             "website": "",
                             "about": "",
                             "user": profile_url,
                         }
                         self.logger.info(f"{profile}")
-                        # post_exist = existing.append(post)
                         try:
                             header = await new_page.query_selector_all('header')
                             html_code = await header[0].inner_html()
@@ -294,18 +287,36 @@ class InstaStrategy(InteractionStrategy):
 
                                 # followers (often inside an <a> with title or inner span)
                                 try:
-                                    followers_text = lis[1].text
-                                    m = re.search(r'[\d,.]+[kKmM]?', followers_text)
-                                    followers_val = m.group(0)
-                                    profile["followers"] = parse_count(followers_val) if followers_val else None
+                                    self.logger.info(f"getting followers in -------")
+                                    # Prefer title attribute if present
+                                    title_elem = lis[1].find(attrs={"title": True})
+                                    if title_elem and title_elem.get("title"):
+                                        followers_val = title_elem["title"].strip()
+                                        self.logger.info(f"Found followers in title: {followers_val}")
+                                        profile["followers"] = followers_val if followers_val else None
+
+                                    else:
+                                        followers_text = lis[1].get_text(" ", strip=True)
+                                        m = re.search(r'[\d,.]+[kKmM]?', followers_text)
+                                        followers_val = m.group(0) if m else None
+                                        self.logger.info(f"Found followers in text: {followers_val}")
+
                                 except Exception as e:
                                     self.logger.debug("Failed to parse followers: %s", e)
 
                                 # following
                                 try:
+                                    self.logger.info(f"getting following in -------")
+
                                     following_text = lis[2].text
                                     m = re.search(r'[\d,.]+[kKmM]?', following_text)
-                                    profile["following"] = parse_count(m.group(0)) if m else None
+                                    self.logger.info(f"following {m}")
+                                    self.logger.info(f"following val {following_text}")
+                                    # profile["following"] = m.group(1) if m else None
+                                    profile["following"] = following_text
+
+                                    self.logger.info(f"following {profile['following']}")
+
                                 except Exception as e:
                                     self.logger.debug("Failed to parse following: %s", e)
 

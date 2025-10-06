@@ -94,7 +94,7 @@ class BrowserManager:
         )
 
         page = await self.context.new_page()
-        page.set_default_timeout(30000)
+        page.set_default_timeout(300000)
 
         return page
 

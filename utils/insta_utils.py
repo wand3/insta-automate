@@ -143,31 +143,36 @@ async def check_if_its_visible(page, selector, logger):
 
 def parse_count(text: str):
     """Convert strings like '411K', '2,876', '1.2M' to int where possible."""
-    if not text:
+    if not text or not isinstance(text, str):
         return None
+
     s = text.strip()
-    # remove non-breaking spaces
-    s = s.replace('\xa0', '').replace('\u202f', '')
-    # direct digits with commas
+    s = s.replace('\xa0', '').replace('\u202f', '').replace(' ', '')
+
+    # Normalize common suffixes
+    suffix_match = re.match(r'^([\d,.]+)([kKmMbB])$', s)
+    if suffix_match:
+        num_str, suffix = suffix_match.groups()
+        try:
+            num = float(num_str.replace(',', ''))
+            multiplier = {'k': 1_000, 'm': 1_000_000, 'b': 1_000_000_000}
+            return int(num * multiplier[suffix.lower()])
+        except Exception:
+            return None
+
+    # Pure number with commas or decimals
     if re.match(r'^[\d,\.]+$', s):
         try:
-            # handle decimals by removing fractional part for counts
             return int(float(s.replace(',', '')))
         except Exception:
             return None
-    m = re.match(r'^([\d,.]*\d)([kKmM])$', s)
-    if m:
-        num = float(m.group(1).replace(',', ''))
-        suffix = m.group(2).lower()
-        if suffix == 'k':
-            return int(num * 1000)
-        if suffix == 'm':
-            return int(num * 1000000)
-    # fallback: find first number-like token
-    m2 = re.search(r'([\d,\.]+)', s)
-    if m2:
+
+    # Fallback: extract first number-like token
+    fallback_match = re.search(r'([\d,\.]+)', s)
+    if fallback_match:
         try:
-            return int(float(m2.group(1).replace(',', '')))
+            return int(float(fallback_match.group(1).replace(',', '')))
         except Exception:
             return None
+
     return None
