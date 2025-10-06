@@ -167,6 +167,9 @@ class InstaStrategy(InteractionStrategy):
 
     async def get_posts(self, page: Page, max_concurrent: int = 5) -> list[ElementHandle]:
         posts = await page.query_selector_all('article')
+        for article in posts[2:]:
+            await self.post_interaction(page, article)
+
 
         # Limit concurrency to avoid overwhelming the browser
         semaphore = asyncio.Semaphore(max_concurrent)
@@ -379,12 +382,40 @@ class InstaStrategy(InteractionStrategy):
 
         self.logger.info("Profile scraping run complete; output appended to %s")
 
+    async def post_interaction(self, page: Page, article):
+        # like and comment on post
+        comments = [
+            "🔥 This is top-tier work! Really impressive stuff.",
+            "Love the attention to detail — you nailed it 👏",
+            "This deserves way more recognition, amazing job!",
+            "Pure brilliance! Keep up the awesome work 💪",
+            "Such a well-thought-out post, I learned something new today!",
+            "Big props for this one — super insightful and well executed!"
+        ]
+        # like
+        like_post = await article.query_selector('svg[aria-label="Like"]')
+        likePos = await like_post.bounding_box()
+        await page.mouse.move(likePos["x"] + likePos["width"] / 2, likePos["y"] + likePos["height"] / 2)
+        await page.mouse.dblclick(likePos["x"] + likePos["width"] / 2, likePos["y"] + likePos["height"] / 2)
+        await asyncio.sleep(short_delay)
+        self.logger.info("Post like successful")
+
+        # comment
+        c = await article.query_selector('textarea[aria-label="Add a comment…"]')
+        commentPos = await c.bounding_box()
+        await page.mouse.move(commentPos["x"] + commentPos["width"] / 2, commentPos["y"] + commentPos["height"] / 2)
+        await page.mouse.click(commentPos["x"] + commentPos["width"] / 2, commentPos["y"] + commentPos["height"] / 2)
+        await page.keyboard.type(comments[random.randint(0, 5)], delay=200)
+        await page.keyboard.press('Enter')
+        self.logger.info("Post comment successful")
+
+
     async def interact(self, page: Page):
         await page.goto("https://instagram.com/")
         # 1) If no cookie file, log in fresh and save cookies
         # verify
         value = page.evaluate("() => navigator.webdriver")
-        self.logger.error("navigator.webdriver =''", value)
+        # self.logger.error("navigator.webdriver =''", value)
 
         # login = await page.query_selector("button[type='submit']:has-text('Log in')")
         home = await page.query_selector("div[data-visualcompletion='ignore-dynamic']")
@@ -426,8 +457,8 @@ class InstaStrategy(InteractionStrategy):
         await page.wait_for_load_state()
         await asyncio.sleep(short_delay)
         await self.scroll_home(page)
-        # await self.get_posts(page)
-        await self.scrape_profiles(page)
+        await self.get_posts(page)
+        # await self.scrape_profiles(page)
 
         self.logger.info("InstaStrategy finished actions")
         self.logger.info(f"la di la")
