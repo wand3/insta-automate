@@ -7,7 +7,7 @@ import json
 
 class BrowserManager:
     # def __init__(self, headless: bool = False, storage_state_path: str = None):
-    def __init__(self, headless: bool = False, state_filename=None, storage_state_path=None):
+    def __init__(self, headless: bool = True, state_filename=None, storage_state_path=None):
         self.logger = get_logger(self.__class__.__name__)
         self.logger.info(f"Starting BrowserManager")
 

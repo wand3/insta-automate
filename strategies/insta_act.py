@@ -167,9 +167,8 @@ class InstaStrategy(InteractionStrategy):
 
     async def get_posts(self, page: Page, max_concurrent: int = 5) -> list[ElementHandle]:
         posts = await page.query_selector_all('article')
-        for article in posts[2:]:
+        for article in posts[1:]:
             await self.post_interaction(page, article)
-
 
         # Limit concurrency to avoid overwhelming the browser
         semaphore = asyncio.Semaphore(max_concurrent)
@@ -263,7 +262,7 @@ class InstaStrategy(InteractionStrategy):
                             "about": "",
                             "user": profile_url,
                         }
-                        self.logger.info(f"{profile}")
+                        # self.logger.info(f"{profile}")
                         try:
                             header = await new_page.query_selector_all('header')
                             html_code = await header[0].inner_html()
@@ -341,7 +340,7 @@ class InstaStrategy(InteractionStrategy):
 
                             profile['about'] = divs[6].text if len(divs) <= 10 else None
                             profile['website'] = links[2].text if len(links) >= 3 else None
-                            self.logger.info(f"{profile}")
+                            # self.logger.info(f"{profile}")
 
                             # self.logger.info(f"saving to json post data")
                             save_to_profile_json(self, profile)
@@ -377,7 +376,7 @@ class InstaStrategy(InteractionStrategy):
         # tasks = [asyncio.create_task(self._scrape_one(page, user)) for user in users[:5]]
         # # wait for completion, propagate errors only after logging
         # await asyncio.gather(*tasks)
-        for user in users[:5]:
+        for user in users[:9]:
             await self._scrape_one(page, user)
 
         self.logger.info("Profile scraping run complete; output appended to %s")
@@ -400,7 +399,7 @@ class InstaStrategy(InteractionStrategy):
         await asyncio.sleep(short_delay)
         self.logger.info("Post like successful")
 
-        # comment
+        # # comment
         c = await article.query_selector('textarea[aria-label="Add a comment…"]')
         commentPos = await c.bounding_box()
         await page.mouse.move(commentPos["x"] + commentPos["width"] / 2, commentPos["y"] + commentPos["height"] / 2)
@@ -408,7 +407,6 @@ class InstaStrategy(InteractionStrategy):
         await page.keyboard.type(comments[random.randint(0, 5)], delay=200)
         await page.keyboard.press('Enter')
         self.logger.info("Post comment successful")
-
 
     async def interact(self, page: Page):
         await page.goto("https://instagram.com/")
@@ -446,7 +444,7 @@ class InstaStrategy(InteractionStrategy):
             # 2) Already logged in via storage state
             self.logger.info("Using existing cookies")
 
-        # 3) Any further actions here…
+        # further actions here…
         try:
             await page.wait_for_selector("div[data-visualcompletion='ignore-dynamic']")
         except:
@@ -458,7 +456,7 @@ class InstaStrategy(InteractionStrategy):
         await asyncio.sleep(short_delay)
         await self.scroll_home(page)
         await self.get_posts(page)
-        # await self.scrape_profiles(page)
+        await self.scrape_profiles(page)
 
         self.logger.info("InstaStrategy finished actions")
         self.logger.info(f"la di la")
